@@ -6,7 +6,7 @@ from src import quantization
 
 
 def test_fuse_modules():
-    detection_model = quantization.resnet_fpn_bn(weights=None, num_classes=2)
+    detection_model = quantization.resnet_fpn_bn(num_classes=2)
 
     detection_model = detection_model.eval()
     x = torch.rand((1, 3, 512, 512), dtype=torch.float32)
