@@ -359,3 +359,47 @@ def quantize_model(model: torch.nn.Module,
         raise NotImplementedError
     
     return model
+
+
+def resnet_fpn_bn(
+    *,
+    progress: bool = False,
+    num_classes: tp.Optional[int] = 2,
+    weights_backbone: tp.Union[ResNet18_Weights, ResNet34_Weights, ResNet50_Weights] = ResNet50_Weights.IMAGENET1K_V1,
+    trainable_backbone_layers: int = 3,
+    **kwargs: tp.Any,
+) -> faster_rcnn.FasterRCNN:
+    '''Copied from https://github.com/pytorch/vision/blob/2c44ebaeece31b0cc9a7385e406312f741333ab5/torchvision/models/detection/faster_rcnn.py#L459
+       Modifications:
+        - BatchNorm instead of FrozenBatchNorm
+    '''
+    #MODIFIED: always BatchNorm
+    norm_layer = torch.nn.BatchNorm2d
+
+    is_trained = True
+    trainable_backbone_layers = backbone_utils._validate_trainable_layers(is_trained, trainable_backbone_layers, 6, 3)
+
+    if isinstance(weights_backbone, ResNet18_Weights):
+        backbone = torchvision.models.resnet18(weights=weights_backbone, progress=progress, norm_layer=norm_layer)
+    elif isinstance(weights_backbone, ResNet34_Weights):
+        backbone = torchvision.models.resnet34(weights=weights_backbone, progress=progress, norm_layer=norm_layer)
+    elif isinstance(weights_backbone, ResNet50_Weights):
+        backbone = torchvision.models.resnet50(weights=weights_backbone, progress=progress, norm_layer=norm_layer)
+
+
+    backbone = backbone_utils._resnet_fpn_extractor(backbone, trainable_backbone_layers)
+
+    # These are the features returned when `returned_layers` is not set.
+    # Resnet backbones return features from all layers except `conv0` so 4
+    featmap_names = ["0", "1", "2", "3"]
+    anchor_sizes = ((32,), (64,), (128,), (256,), (512,))
+    aspect_ratios = ((0.5, 1.0, 2.0),) * len(anchor_sizes)
+
+    box_roi_pool = torchvision.ops.MultiScaleRoIAlign(
+                featmap_names=featmap_names, output_size=7, sampling_ratio=2
+            )
+    model = faster_rcnn.FasterRCNN(
+        backbone, num_classes, rpn_anchor_generator=anchor_utils.AnchorGenerator(anchor_sizes, aspect_ratios), box_roi_pool=box_roi_pool, **kwargs
+    )
+
+    return model
